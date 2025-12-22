@@ -25,6 +25,17 @@ class PizzaOrder(StatesGroup):
     waiting_for_type = State()
     waiting_for_quantity = State()
 
+MENU = [
+    {"name": "Pepperoni"},
+    {"name": "Margherita"},
+    {"name": "Vegetarian"},
+    {"name": "Hawaiian"},
+    {"name": "Meat Lovers"},
+    {"name": "BBQ Chicken"},
+    {"name": "Supreme"},
+    {"name": "Four Cheese"}
+]
+
 def extract_pizza_type(text: str) -> str:
     doc = nlp(text.lower())
     for token in doc:
@@ -84,23 +95,40 @@ def save_order_to_db(orderdict: dict):
 @router.message(Command("pizza"))
 async def start_pizza_order(message: Message, state: FSMContext):
     await state.set_state(PizzaOrder.waiting_for_type)
+    # Show the menu options to the user
+    menu_list = "\n".join([f"- {pizza['name']}" for pizza in MENU])
     await message.answer(
         "🍕 Great! Let's order pizza.\n"
-        "What type would you like? (e.g., *pepperoni*, *vegetarian*, *margherita*)",
+        f"What type would you like?\n\nMenu:\n{menu_list}",
         parse_mode="Markdown"
     )
 
 # === Шаг 1: Тип пиццы ===
 @router.message(PizzaOrder.waiting_for_type, F.text)
 async def get_pizza_type(message: Message, state: FSMContext):
-    pizza_type = extract_pizza_type(message.text)
-    await state.update_data(ptype=pizza_type)
-    await state.set_state(PizzaOrder.waiting_for_quantity)
-    await message.answer(
-        f"Got it: *{pizza_type}*\n"
-        "How many pizzas would you like? (1–10, e.g., *2* or *two*)",
-        parse_mode="Markdown"
-    )
+    user_input = message.text.strip().lower()
+    
+    # Check if the user's input matches any pizza in the menu
+    matched_pizza = None
+    for pizza in MENU:
+        if user_input == pizza['name'].lower():
+            matched_pizza = pizza['name']
+            break
+    
+    if matched_pizza:
+        await state.update_data(ptype=matched_pizza)
+        await state.set_state(PizzaOrder.waiting_for_quantity)
+        await message.answer(
+            f"Got it: *{matched_pizza}*\n"
+            "How many pizzas would you like? (1–10, e.g., *2* or *two*)",
+            parse_mode="Markdown"
+        )
+    else:
+        # Show the menu and ask again
+        menu_list = "\n".join([f"- {pizza['name']}" for pizza in MENU])
+        await message.answer(
+            f"Please select a pizza from the menu:\n{menu_list}"
+        )
 
 # === Шаг 2: Количество ===
 @router.message(PizzaOrder.waiting_for_quantity, F.text)
