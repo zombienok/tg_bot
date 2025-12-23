@@ -4,7 +4,7 @@ from PIL import Image
 from transformers import BlipProcessor, BlipForConditionalGeneration
 import os
 
-def get_photo_tags(image_path: str, clarifai_pat: str = None) -> str:
+def get_photo_tags(image_path: str) -> str:
     """
     Image classification function using a pre-trained VLM (Vision-Language Model).
     Uses BLIP model for image understanding and description.
