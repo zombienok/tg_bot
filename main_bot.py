@@ -176,12 +176,29 @@ def extract_pizza_info(text: str):
     return quantity, pizza_type
 
 def check_pizza_in_menu(pizza_type: str) -> bool:
-    """Check if the pizza type exists in the menu"""
+    """Check if the pizza type exists in the menu using spaCy similarity"""
     # Import the menu from pizza.py
     from pizza import MENU
+    import spacy
     
+    nlp = spacy.load("en_core_web_sm")
+    
+    # Create spaCy doc for the pizza type
+    user_doc = nlp(pizza_type.lower())
+    
+    # Compare with each menu item
     for pizza in MENU:
-        if pizza_type.lower() in pizza['name'].lower() or pizza['name'].lower() in pizza_type.lower():
+        menu_doc = nlp(pizza['name'].lower())
+        
+        # Calculate similarity using spaCy's built-in similarity function
+        try:
+            similarity = user_doc.similarity(menu_doc)
+        except:
+            # Fallback if similarity calculation fails
+            similarity = 0.0
+        
+        # Return True if similarity is above threshold
+        if similarity >= 0.88:
             return True
     return False
 
@@ -214,7 +231,7 @@ async def handle_text(message: Message, state: FSMContext):
             await message.answer(
                 f"Great! I can help you order pizza.\n"
                 f"I detected you want to order {quantity} pizza(s), but I need to know the type.\n"
-                f"Available options: Pepperoni, Margherita, Vegetarian, Hawaiian, Meat Lovers, BBQ Chicken, Supreme, Four Cheese\n"
+                f"Available options: Pepperoni, Margherita, Vegetarian\n"
                 f"What type of pizza would you like?"
             )
         return
@@ -238,7 +255,7 @@ async def handle_text(message: Message, state: FSMContext):
 async def handle_photo(message: Message, bot: Bot):
     current_state = await state.get_state()
     if current_state and "PizzaOrder" in current_state:
-        await message.answer("Please finish your pizza order first (send quantity).")
+        await message.answer("Please finish your pizza order first before sending photos.")
         return
 
     try:
@@ -247,7 +264,11 @@ async def handle_photo(message: Message, bot: Bot):
         os.makedirs("temp", exist_ok=True)
         path = f"temp/{photo.file_id}.jpg"
         await bot.download_file(file.file_path, path)
-        tag = get_photo_tags(path)
+        
+        # Use the image module for tag extraction
+        from image import get_photo_tags
+        clarifai_pat = os.getenv('CLARIFAI_PAT')
+        tag = get_photo_tags(path, clarifai_pat)
         desc = search_wikipedia(tag)
         await message.answer(f"🖼️ This looks like: *{tag}*\n\n{desc}", parse_mode="Markdown")
         os.remove(path)

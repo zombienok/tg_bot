@@ -25,6 +25,44 @@ class PizzaOrder(StatesGroup):
     waiting_for_type = State()
     waiting_for_quantity = State()
 
+def get_embedding(text: str):
+    """Generate embedding for text using spaCy's word vectors"""
+    doc = nlp(text)
+    # Use the spaCy document vector
+    return doc
+
+
+def find_best_pizza_match(user_input: str) -> str:
+    """Find the best matching pizza from the menu using spaCy similarity"""
+    from pizza import MENU
+    
+    # Create spaCy doc for user input
+    user_doc = nlp(user_input.lower())
+    
+    best_match = None
+    best_similarity = 0.0
+    
+    # Compare with each menu item
+    for pizza in MENU:
+        menu_doc = nlp(pizza["name"].lower())
+        
+        # Calculate similarity using spaCy's built-in similarity function
+        try:
+            similarity = user_doc.similarity(menu_doc)
+        except:
+            # Fallback if similarity calculation fails
+            similarity = 0.0
+        
+        if similarity > best_similarity:
+            best_similarity = similarity
+            best_match = pizza["name"]
+    
+    # Return the best match if similarity is above threshold
+    if best_similarity >= 0.88:
+        return best_match
+    else:
+        return None
+
 def extract_pizza_type(text: str) -> str:
     doc = nlp(text.lower())
     for token in doc:
@@ -34,9 +72,20 @@ def extract_pizza_type(text: str) -> str:
                 if left.dep_ in ("amod", "compound"):
                     modifiers.append(left.text)
             if modifiers:
-                return " ".join(modifiers + ["pizza"]).title()
+                candidate_type = " ".join(modifiers + ["pizza"]).title()
+                # Check if this candidate matches any menu item using embeddings
+                matched_pizza = find_best_pizza_match(candidate_type)
+                if matched_pizza:
+                    return matched_pizza
+                return " ".join(modifiers).title()
             else:
                 return "Custom Pizza"
+    
+    # If no "pizza" token found, try to match the entire text against menu items
+    matched_pizza = find_best_pizza_match(text)
+    if matched_pizza:
+        return matched_pizza
+        
     return text.strip().title()
 
 def extract_quantity(text: str) -> int:
@@ -110,9 +159,19 @@ async def get_pizza_quantity(message: Message, state: FSMContext):
         if qty < 1 or qty > 10:
             qty = 1
         data = await state.get_data()
+        pizza_type = data["ptype"]
+        
+        # Check if pizza type matches menu items with similarity above 0.88
+        matched_pizza = find_best_pizza_match(pizza_type)
+        if not matched_pizza:
+            await message.answer(f"❌ Sorry, we don't have '{pizza_type}' in our menu. Please choose from: Pepperoni, Margherita, or Vegetarian.")
+            await state.clear()
+            return
+        
+        # Use the matched pizza name from the menu
         orderdict = {
             "product": "pizza",
-            "ptype": data["ptype"],
+            "ptype": matched_pizza,
             "qty": qty
         }
         save_order_to_db(orderdict)
