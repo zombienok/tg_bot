@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-from pizza import router as pizza_router
+from pizza_bot import router as pizza_router
 from search import extract_keyphrase, search_wikipedia, nlp
 from image import get_photo_tags
 
