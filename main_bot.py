@@ -12,7 +12,7 @@ import wikipedia
 from clarifai.client.model import Model
 from dotenv import load_dotenv
 
-from pizza_bot import router as pizza_router
+
 
 load_dotenv()
 API_TOKEN = os.getenv('BOT_API_KEY')
@@ -84,11 +84,139 @@ async def universal_start(message: Message, state: FSMContext):
         "Just start!"
     )
 
+def detect_pizza_intent(text: str) -> bool:
+    """Detect if the user wants to order pizza using spaCy"""
+    doc = nlp(text.lower())
+    
+    # Check for variations of "i want a pizza" and similar phrases
+    for token in doc:
+        if token.lemma_ in ["want", "would", "like", "need", "order", "get"]:
+            # Look for pizza in the sentence
+            for child in token.subtree:
+                if child.lemma_ in ["pizza", "pizzas"]:
+                    return True
+    
+    # Check for common phrases indicating pizza intent
+    lower_text = text.lower()
+    pizza_intents = [
+        "i want a pizza",
+        "i want some pizza",
+        "i would like a pizza",
+        "i need a pizza",
+        "i'd like a pizza",
+        "i want pizza",
+        "i would like pizza",
+        "i need pizza",
+        "i'd like pizza",
+        "can i get a pizza",
+        "can i have a pizza",
+        "order pizza",
+        "get pizza"
+    ]
+    
+    for intent in pizza_intents:
+        if intent in lower_text:
+            return True
+            
+    return False
+
+def extract_pizza_info(text: str):
+    """Extract pizza type and quantity from text using spaCy"""
+    doc = nlp(text.lower())
+    
+    # Extract quantity
+    quantity = 1  # default
+    word_to_num = {
+        "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "a": 1, "an": 1
+    }
+    
+    # Look for numbers and number words
+    for token in doc:
+        if token.text in word_to_num:
+            quantity = word_to_num[token.text]
+        elif token.text.isdigit():
+            quantity = int(token.text)
+        elif token.lemma_ in ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]:
+            quantity = word_to_num[token.lemma_]
+    
+    # Extract pizza type by looking for adjectives or nouns before/around "pizza"
+    pizza_type = None
+    for token in doc:
+        if token.lemma_ == "pizza":
+            # Look for modifiers (adjectives, compounds) before the pizza token
+            modifiers = []
+            for left in token.lefts:
+                if left.dep_ in ("amod", "compound", "det"):
+                    modifiers.append(left.text)
+            
+            # If no modifiers found, check if there are other nouns nearby that might be pizza types
+            if not modifiers:
+                # Look at tokens within a certain distance
+                for i, t in enumerate(doc):
+                    if t != token and t.pos_ in ("NOUN", "ADJ") and abs(t.i - token.i) <= 2:
+                        modifiers.append(t.text)
+            
+            if modifiers:
+                pizza_type = " ".join(modifiers).title()
+            else:
+                pizza_type = "Custom Pizza"
+            break
+    
+    # If we didn't find a specific type but there are adjectives that could be pizza types
+    if not pizza_type:
+        for token in doc:
+            if token.pos_ == "ADJ" and token.lemma_ in ["pepperoni", "margherita", "vegetarian", 
+                                                        "hawaiian", "meat", "bbq", "chicken", 
+                                                        "supreme", "cheese", "four"]:
+                pizza_type = token.text.title()
+                break
+    
+    return quantity, pizza_type
+
+def check_pizza_in_menu(pizza_type: str) -> bool:
+    """Check if the pizza type exists in the menu"""
+    # Import the menu from pizza.py
+    from pizza import MENU
+    
+    for pizza in MENU:
+        if pizza_type.lower() in pizza['name'].lower() or pizza['name'].lower() in pizza_type.lower():
+            return True
+    return False
+
 @main_router.message(F.text)
 async def handle_text(message: Message, state: FSMContext):
-    # Если пользователь в универсальном режиме, но пишет про пиццу — дадим подсказку
-    if "pizza" in message.text.lower():
-        await message.answer("Would you like to order pizza? Use the command /pizza 🍕")
+    # Check if the user wants to order pizza
+    if detect_pizza_intent(message.text):
+        quantity, pizza_type = extract_pizza_info(message.text)
+        
+        # Check if we have enough information to place an order
+        if pizza_type and check_pizza_in_menu(pizza_type):
+            # We have a valid pizza type from the menu, so place the order directly
+            from pizza import save_order_to_db
+            
+            orderdict = {
+                "product": "pizza",
+                "ptype": pizza_type,
+                "qty": quantity
+            }
+            
+            try:
+                save_order_to_db(orderdict)
+                summary = "\n".join(f"{k} - {v}" for k, v in orderdict.items())
+                await message.answer(f"✅ Your pizza order has been placed:\n{summary}\nThank you! 🍕")
+            except Exception as e:
+                logging.error(f"Order error: {e}")
+                await message.answer("❌ Failed to save order. Please try again with /pizza.")
+        else:
+            # Need more information, ask the user
+            await message.answer(
+                f"Great! I can help you order pizza.\n"
+                f"I detected you want to order {quantity} pizza(s), but I need to know the type.\n"
+                f"Available options: Pepperoni, Margherita, Vegetarian, Hawaiian, Meat Lovers, BBQ Chicken, Supreme, Four Cheese\n"
+                f"What type of pizza would you like?"
+            )
         return
 
     # Проверка состояния: если в заказе — игнорируем (pizza_router обработает)
@@ -131,7 +259,6 @@ async def handle_photo(message: Message, bot: Bot):
 async def main():
     bot = Bot(token=API_TOKEN)
     dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(pizza_router)  # pizza FSM
     dp.include_router(main_router)   # universal fallback
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
