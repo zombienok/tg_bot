@@ -15,7 +15,6 @@ from image import get_photo_tags
 
 load_dotenv()
 API_TOKEN = os.getenv('BOT_API_KEY')
-CLARIFAI_PAT = os.getenv('CLARIFAI_PAT')
 
 logging.basicConfig(level=logging.INFO)
 main_router = Router()
@@ -69,7 +68,7 @@ async def handle_photo(message: Message, bot: Bot, state: FSMContext):
         os.makedirs("temp", exist_ok=True)
         path = f"temp/{photo.file_id}.jpg"
         await bot.download_file(file.file_path, path)
-        tag = get_photo_tags(path, CLARIFAI_PAT)
+        tag = get_photo_tags(path)
         desc = search_wikipedia(tag)
         await message.answer(f"🖼️ This looks like: *{tag}*\n\n{desc}", parse_mode="Markdown")
         os.remove(path)

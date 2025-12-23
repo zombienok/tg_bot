@@ -9,14 +9,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 import spacy
 import wikipedia
-from clarifai.client.model import Model
 from dotenv import load_dotenv
 
 
 
 load_dotenv()
 API_TOKEN = os.getenv('BOT_API_KEY')
-CLARIFAI_PAT = os.getenv('CLARIFAI_PAT')
 
 logging.basicConfig(level=logging.INFO)
 nlp = spacy.load("en_core_web_sm")
@@ -62,13 +60,7 @@ def search_wikipedia(query: str) -> str:
     except Exception:
         return "Sorry, Wikipedia search failed."
 
-def get_photo_tags(image_path: str) -> str:
-    with open(image_path, "rb") as f:
-        image_bytes = f.read()
-    model = Model("https://clarifai.com/clarifai/main/models/general-image-recognition", pat=CLARIFAI_PAT)
-    resp = model.predict_by_bytes(image_bytes, input_type="image")
-    concepts = resp.outputs[0].data.concepts
-    return concepts[0].name if concepts else "something"
+
 
 # === Хендлеры ===
 
@@ -267,8 +259,7 @@ async def handle_photo(message: Message, bot: Bot):
         
         # Use the image module for tag extraction
         from image import get_photo_tags
-        clarifai_pat = os.getenv('CLARIFAI_PAT')
-        tag = get_photo_tags(path, clarifai_pat)
+        tag = get_photo_tags(path)
         desc = search_wikipedia(tag)
         await message.answer(f"🖼️ This looks like: *{tag}*\n\n{desc}", parse_mode="Markdown")
         os.remove(path)
