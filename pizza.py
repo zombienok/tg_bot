@@ -15,12 +15,7 @@ logging.basicConfig(level=logging.INFO)
 MENU = [
     {"name": "Pepperoni"},
     {"name": "Margherita"},
-    {"name": "Vegetarian"},
-    {"name": "Hawaiian"},
-    {"name": "Meat Lovers"},
-    {"name": "BBQ Chicken"},
-    {"name": "Supreme"},
-    {"name": "Four Cheese"}
+    {"name": "Vegetarian"}
 ]
 
 def save_order_to_db(orderdict: dict):
